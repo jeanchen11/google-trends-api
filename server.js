@@ -1,43 +1,44 @@
-const express = require("express");
-const axios = require("axios");
-const xml2js = require("xml2js");
+// server.js
+const express = require('express');
+const axios = require('axios');
+const cheerio = require('cheerio');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 首頁訊息
-app.get("/", (req, res) => {
-  res.send("✅ Google Trends API is running.");
+app.get('/', (req, res) => {
+  res.send('✅ Welcome to Google Trends API');
 });
 
-// API 路由：取得即時熱搜
-app.get("/api/trends", async (req, res) => {
+app.get('/trends', async (req, res) => {
   try {
-    const response = await axios.get("https://trends.google.com/trends/trendingsearches/daily/rss?geo=TW");
-    const xml = response.data;
+    const url = 'https://trends.google.com/trends/trendingsearches/daily?geo=TW';
+    const { data: html } = await axios.get(url);
+    const $ = cheerio.load(html);
 
-    xml2js.parseString(xml, (err, result) => {
-      if (err) {
-        return res.status(500).json({ error: "解析 XML 失敗" });
-      }
+    const jsonDataMatch = html.match(/window\.__NEXT_DATA__ = (.*);<\/script>/);
+    if (!jsonDataMatch || jsonDataMatch.length < 2) {
+      throw new Error('❌ 無法解析 trends 資料');
+    }
 
-      const items = result.rss.channel[0].item.slice(0, 25).map((item, index) => ({
-        index: index + 1,
-        title: item.title[0],
-        approxTraffic: item["ht:approx_traffic"] ? item["ht:approx_traffic"][0] : "無資料",
-        description: item.description[0],
-        link: item.link[0],
-      }));
+    const jsonData = JSON.parse(jsonDataMatch[1]);
+    const trendItems =
+      jsonData.props.pageProps.trendingSearchesDays?.[0]?.trendingSearches || [];
 
-      res.json(items);
-    });
-  } catch (error) {
-    console.error("❌ Error fetching trends:", error.message);
-    res.status(500).json({ error: "無法取得熱搜資料" });
+    const trends = trendItems.map(item => ({
+      title: item.title.query,
+      traffic: item.formattedTraffic,
+      snippet: item.title.shareText,
+      link: item.shareUrl,
+    }));
+
+    res.json(trends);
+  } catch (err) {
+    console.error('❌ Error fetching trends:', err);
+    res.status(500).send('❌ Failed to fetch trends');
   }
 });
 
-// 啟動伺服器
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`✅ Server is running at http://localhost:${PORT}`);
 });
