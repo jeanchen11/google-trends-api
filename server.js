@@ -1,44 +1,36 @@
-// server.js
 const express = require('express');
 const axios = require('axios');
-const cheerio = require('cheerio');
+const { parseString } = require('xml2js');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
-  res.send('✅ Welcome to Google Trends API');
+  res.send('🔍 Google Trends API is running!');
 });
 
 app.get('/trends', async (req, res) => {
   try {
-    const url = 'https://trends.google.com/trends/trendingsearches/daily?geo=TW';
-    const { data: html } = await axios.get(url);
-    const $ = cheerio.load(html);
+    const response = await axios.get('https://trends.google.com.tw/trends/trendingsearches/daily/rss?geo=TW');
+    const xml = response.data;
 
-    const jsonDataMatch = html.match(/window\.__NEXT_DATA__ = (.*);<\/script>/);
-    if (!jsonDataMatch || jsonDataMatch.length < 2) {
-      throw new Error('❌ 無法解析 trends 資料');
-    }
+    parseString(xml, (err, result) => {
+      if (err) return res.status(500).send('❌ XML 解析失敗');
 
-    const jsonData = JSON.parse(jsonDataMatch[1]);
-    const trendItems =
-      jsonData.props.pageProps.trendingSearchesDays?.[0]?.trendingSearches || [];
-
-    const trends = trendItems.map(item => ({
-      title: item.title.query,
-      traffic: item.formattedTraffic,
-      snippet: item.title.shareText,
-      link: item.shareUrl,
-    }));
-
-    res.json(trends);
+      const items = result.rss.channel[0].item.map(i => ({
+        title: i.title[0],
+        traffic: i['ht:approx_traffic']?.[0] || '',
+        pubDate: i.pubDate[0],
+        link: i.link[0]
+      }));
+      res.json(items);
+    });
   } catch (err) {
-    console.error('❌ Error fetching trends:', err);
-    res.status(500).send('❌ Failed to fetch trends');
+    console.error('❌ Error:', err.message);
+    res.status(500).send('❌ 熱搜抓取失敗');
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ Server is running at http://localhost:${PORT}`);
+  console.log(`✅ Server running on port ${PORT}`);
 });
