@@ -1,43 +1,43 @@
-const express = require('express');
-const axios = require('axios');
-const xml2js = require('xml2js');
+const express = require("express");
+const axios = require("axios");
+const xml2js = require("xml2js");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 擷取 Google Trends RSS 並轉為 JSON API
-app.get('/trends', async (req, res) => {
+// 首頁訊息
+app.get("/", (req, res) => {
+  res.send("✅ Google Trends API is running.");
+});
+
+// API 路由：取得即時熱搜
+app.get("/api/trends", async (req, res) => {
   try {
-    const url = 'https://trends.google.com/trends/trendingsearches/daily/rss?geo=TW';
-    const response = await axios.get(url);
+    const response = await axios.get("https://trends.google.com/trends/trendingsearches/daily/rss?geo=TW");
     const xml = response.data;
 
-    xml2js.parseString(xml, { explicitArray: false }, (err, result) => {
+    xml2js.parseString(xml, (err, result) => {
       if (err) {
-        console.error('❌ XML 解析錯誤:', err);
-        return res.status(500).send('XML parse error');
+        return res.status(500).json({ error: "解析 XML 失敗" });
       }
 
-      const items = result.rss.channel.item;
-      const top25 = items.slice(0, 25).map((item, index) => ({
+      const items = result.rss.channel[0].item.slice(0, 25).map((item, index) => ({
         index: index + 1,
-        title: item.title,
-        approxTraffic: item['ht:approx_traffic'] || '無資料',
-        description: item.description,
+        title: item.title[0],
+        approxTraffic: item["ht:approx_traffic"] ? item["ht:approx_traffic"][0] : "無資料",
+        description: item.description[0],
+        link: item.link[0],
       }));
 
-      res.json({ date: result.rss.channel.pubDate, trends: top25 });
+      res.json(items);
     });
-  } catch (err) {
-    console.error('❌ 錯誤擷取 trends:', err.message);
-    res.status(500).send('Fetch failed');
+  } catch (error) {
+    console.error("❌ Error fetching trends:", error.message);
+    res.status(500).json({ error: "無法取得熱搜資料" });
   }
 });
 
-app.get('/', (req, res) => {
-  res.send('✅ Google Trends RSS API Server is running');
-});
-
+// 啟動伺服器
 app.listen(PORT, () => {
-  console.log(`🚀 Server is running at http://localhost:${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
